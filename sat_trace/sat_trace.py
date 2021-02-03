@@ -1,5 +1,5 @@
+import matplotlib.pyplot as plt
 import numpy as np
-from calcul_trace_satellite_Louis_ETIENNE import determine_correction_for_t
 
 EARTH_RADIUS = 6378  # km
 EARTH_GRAV_CONST = 398600  # km³/s²
@@ -19,6 +19,11 @@ class Satellite:
         self.inc = inclination  # deg
         self.LAN = longitude_ascending_node  # deg
         self.AOP = argument_of_periapsis  # deg
+        self._standard_parameters()
+        self._initialize()
+        self._main()
+
+    def _standard_parameters(self):
         self.radius_ap = self.sma * (1 + self.ecc)  # km
         self.radius_pe = self.sma * (1 - self.ecc)  # km
         self.altitude_ap = self.radius_ap + EARTH_RADIUS  # km
@@ -31,23 +36,28 @@ class Satellite:
             2 * (-(EARTH_GRAV_CONST / (2 * self.sma)) + (EARTH_GRAV_CONST / self.radius_pe))
         )  # km/s
 
-        self._heavy_stuff()
-
-    def _heavy_stuff(self, step=30):
+    def _initialize(self):
         # initialize
         self.nu_crit = round(np.degrees(np.arccos(-self.ecc)))
         nu_init = -self.AOP
         self.t_p = self._compute_t(nu_init)
 
+    def _main(self, step=30):
         # compute t in function of nu
         self.nu_list = np.arange(-60, 360, step)
         self.t_list = np.array([self._compute_t(nu) - self.t_p for nu in self.nu_list])
-        self.latitude_list = np.degrees(
+        # compute the list of latitudes
+        self.latitude = np.degrees(
             np.arcsin(np.sin(np.radians(self.inc) * np.sin(np.radians(self.AOP + self.nu_list))))
         )
-
+        # compute the list of raw longitudes
         self.raw_longitude = np.array(
-            [self._compute_longitude(nu, lat) for nu, lat in zip(self.nu_list, self.latitude_list)]
+            [self._compute_longitude(nu, lat) for nu, lat in zip(self.nu_list, self.latitude)]
+        )
+        # compute the true longitudes, with rotating Earth
+        ALPHA = 360 / 86164
+        self.true_longitude = np.array(
+            [self.LAN + self.raw_longitude[i] - ALPHA * t for i, t in enumerate(self.t_list)]
         )
 
     def _determine_correction_for_t(self, v_c, v):
@@ -70,6 +80,7 @@ class Satellite:
         return correction, factor
 
     def _determine_correction_for_lo(self, aop, v):
+        # Thanks to Louis ETIENNE for this code
         if -aop - np.pi / 2 <= v <= -aop + np.pi / 2:
             correction = 0
             factor = 1
@@ -120,16 +131,23 @@ class Satellite:
         )
 
     def get_figure(self):
-        pass
+        # TODO: handle -180 < longitudes < 180
+        # TODO: return figure object ?
+        plt.plot(self.true_longitude, self.latitude, marker="o")
+        plt.xlabel("Longitudes")
+        plt.ylabel("Latitudes")
+        plt.show()
 
     def get_coords(self):
+        # TODO: return coordinates
         pass
 
 
 def multisat_plot(*args):
+    # TODO: plot multiple satellites on the same figure ?
     pass
 
 
 if __name__ == "__main__":
     sat = Satellite(40708, 0.8320, 61, 120, 270)
-    print(sat.raw_longitude)
+    sat.get_figure()
