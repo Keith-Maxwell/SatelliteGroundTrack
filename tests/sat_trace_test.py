@@ -1,8 +1,8 @@
 import numpy as np
 
-from sat_trace.sat_trace import Satellite
+from sat_trace.sat_trace import SatelliteTrace
 
-s = Satellite(40708, 0.8320, 61, 120, 270)
+s = SatelliteTrace(40708, 0.8320, 61, 120, 270)
 
 
 def test_init():
@@ -23,8 +23,8 @@ def test_correction_for_longitude():
     correction, factor = s._determine_correction_for_lo(
         np.radians(270), np.radians(30)
     )
-    assert round(np.degrees(correction)) == round(np.degrees(np.pi))
-    assert factor == -1
+    assert round(np.degrees(correction)) == round(np.degrees(2 * np.pi))
+    assert factor == +1
 
 
 if __name__ == "__main__":

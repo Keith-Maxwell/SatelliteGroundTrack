@@ -3,9 +3,10 @@ import numpy as np
 
 EARTH_RADIUS = 6378  # km
 EARTH_GRAV_CONST = 398600  # km³/s²
+ALPHA = 360 / 86164
 
 
-class Satellite:
+class SatelliteTrace:
     def __init__(
         self,
         semi_major_axis: float,
@@ -13,6 +14,9 @@ class Satellite:
         inclination: float,
         longitude_ascending_node: float,
         argument_of_periapsis: float,
+        step: int = 30,
+        start: int = 0,
+        stop: int = 360,
     ):
         self.sma = semi_major_axis  # km
         self.ecc = eccentricity
@@ -21,9 +25,72 @@ class Satellite:
         self.AOP = argument_of_periapsis  # deg
         self._standard_parameters()
         self._initialize()
-        self._main()
+        self.compute_latitude_longitude(step, start, stop)
 
-    def _standard_parameters(self):
+    @property
+    def sma(self):
+        return self._sma
+
+    @sma.setter
+    def sma(self, x):
+        if x < EARTH_RADIUS:
+            raise ValueError(
+                "Semi-major axis cannot be lower than the Earth radius"
+            )
+        self._sma = x
+
+    @property
+    def ecc(self):
+        return self._ecc
+
+    @ecc.setter
+    def ecc(self, e):
+        if e >= 1 or e < 0:
+            raise ValueError("Eccentricity must be between 0 and 1.")
+        self._ecc = max(e, 0.00001)  # to avoid 0
+
+    @property
+    def inc(self):
+        return self._inc
+
+    @inc.setter
+    def inc(self, i):
+        if not -180 <= i <= 180:
+            raise ValueError("Inclination must be between -180° and 180°")
+        self._inc = i
+
+    @property
+    def LAN(self):
+        return self._LAN
+
+    @LAN.setter
+    def LAN(self, la):
+        if not 0 <= la <= 360:
+            raise ValueError(
+                "Longitude of Ascending Node must be between 0° and 360"
+            )
+        self._LAN = la
+
+    @property
+    def AOP(self):
+        return self._AOP
+
+    @AOP.setter
+    def AOP(self, a):
+        if not 0 <= a <= 360:
+            raise ValueError(
+                "Argument of periapsis must be between 0° and 360"
+            )
+        self._AOP = a
+
+    def _standard_parameters(self) -> None:
+        """This method computes the standard parameters from the orbital
+        parameters. The standard parameters include the :
+        - radius
+        - altitude
+        - period
+        - velocity
+        """
         self.radius_ap = self.sma * (1 + self.ecc)  # km
         self.radius_pe = self.sma * (1 - self.ecc)  # km
         self.altitude_ap = self.radius_ap + EARTH_RADIUS  # km
@@ -46,15 +113,31 @@ class Satellite:
             )
         )  # km/s
 
-    def _initialize(self):
+    def _initialize(self) -> None:
+        """Compute the critical true anomaly and the time at perigee."""
         # initialize
         self.nu_crit = round(np.degrees(np.arccos(-self.ecc)))
         nu_init = -self.AOP
         self.t_p = self._compute_t(nu_init)
 
-    def _main(self, step=30):
+    def compute_latitude_longitude(
+        self, step: int = 30, start: int = 0, stop: int = 360
+    ):
+        """This function computes the latitude and the longitude of the
+        satellite in the Earth inertial frame
+
+        Parameters
+        ----------
+        step : int, optional
+            mean anomaly step between two points, in degrees, by default 30
+
+        Returns
+        -------
+        tuple[list[float], list[float]]
+            A list of latitudes and a list of longitudes.
+        """
         # compute t in function of nu
-        self.nu_list = np.arange(-60, 360, step)
+        self.nu_list = np.arange(start, stop, step)
         self.t_list = np.array(
             [self._compute_t(nu) - self.t_p for nu in self.nu_list]
         )
@@ -68,22 +151,22 @@ class Satellite:
             )
         )
         # compute the list of raw longitudes
-        self.raw_longitude = np.array(
+        raw_longitude = np.array(
             [
                 self._compute_longitude(nu, lat)
                 for nu, lat in zip(self.nu_list, self.latitude)
             ]
         )
         # compute the true longitudes, with rotating Earth
-        ALPHA = 360 / 86164
-        self.true_longitude = np.array(
+        self.longitude = np.array(
             [
-                self.LAN + self.raw_longitude[i] - ALPHA * t
+                self.LAN + raw_longitude[i] - ALPHA * t
                 for i, t in enumerate(self.t_list)
             ]
         )
 
     def _determine_correction_for_t(self, v_c, v):
+        """Due to an arcsine function, we must apply corrections"""
         # Thanks to Louis ETIENNE for this code
         if -v_c <= v <= v_c:
             correction = 0
@@ -103,6 +186,7 @@ class Satellite:
         return correction, factor
 
     def _determine_correction_for_lo(self, aop, v):
+        """Due to an arcsine function, we must apply corrections"""
         # Thanks to Louis ETIENNE for this code
         if -aop - np.pi / 2 <= v <= -aop + np.pi / 2:
             correction = 0
@@ -124,7 +208,8 @@ class Satellite:
             correction *= -1
         return correction, factor
 
-    def _compute_t(self, nu):
+    def _compute_t(self, nu: float) -> float:
+        """Function to compute the time associated to each true anomaly"""
         correction, factor = self._determine_correction_for_t(
             np.radians(self.nu_crit), np.radians(nu)
         )
@@ -144,7 +229,7 @@ class Satellite:
             )
         )
 
-    def _compute_longitude(self, nu, lat):
+    def _compute_longitude(self, nu: float, lat: float) -> float:
         # input everything in degrees
         correction, factor = self._determine_correction_for_lo(
             np.radians(self.AOP), np.radians(nu)
@@ -155,17 +240,20 @@ class Satellite:
             * np.arcsin(np.tan(np.radians(lat)) / np.tan(np.radians(self.inc)))
         )
 
-    def get_figure(self):
-        # TODO: handle -180 < longitudes < 180
-        # TODO: return figure object ?
-        plt.plot(self.true_longitude, self.latitude, marker="o")
-        plt.xlabel("Longitudes")
-        plt.ylabel("Latitudes")
-        plt.show()
+    def get_latitude(self) -> list[float]:
+        return self.latitude
 
-    def get_coords(self):
-        # TODO: return coordinates
-        pass
+    def get_longitude(self) -> list[float]:
+        return self.longitude
+
+
+def plot(lat: list[float], lon: list[float]) -> None:
+    # TODO: handle -180 < longitudes < 180
+    # TODO: return figure object ?
+    plt.plot(lon, lat, marker="o")
+    plt.xlabel("Longitudes")
+    plt.ylabel("Latitudes")
+    plt.show()
 
 
 def multisat_plot(*args):
@@ -174,5 +262,6 @@ def multisat_plot(*args):
 
 
 if __name__ == "__main__":
-    sat = Satellite(40708, 0.8320, 61, 120, 270)
-    sat.get_figure()
+    sat = SatelliteTrace(40708, 0.8320, 61, 120, 270, step=10)
+    lat, lon = sat.get_latitude(), sat.get_longitude()
+    plot(lat, lon)
