@@ -14,9 +14,6 @@ class SatelliteTrace:
         inclination: float,
         longitude_ascending_node: float,
         argument_of_periapsis: float,
-        step: int = 30,
-        start: int = 0,
-        stop: int = 360,
     ):
         self.sma = semi_major_axis  # km
         self.ecc = eccentricity
@@ -25,7 +22,7 @@ class SatelliteTrace:
         self.AOP = argument_of_periapsis  # deg
         self._standard_parameters()
         self._initialize()
-        self.compute_latitude_longitude(step, start, stop)
+        _ = self.compute_latitude_longitude(30, 0, 360)
 
     @property
     def sma(self):
@@ -36,6 +33,11 @@ class SatelliteTrace:
         if x < EARTH_RADIUS:
             raise ValueError(
                 "Semi-major axis cannot be lower than the Earth radius"
+            )
+        elif x > 1_000_000:
+            raise ValueError(
+                "Semi-major axis cannot be higher than the Earth "
+                "influence sphere"
             )
         self._sma = x
 
@@ -122,19 +124,24 @@ class SatelliteTrace:
 
     def compute_latitude_longitude(
         self, step: int = 30, start: int = 0, stop: int = 360
-    ):
+    ) -> tuple:
         """This function computes the latitude and the longitude of the
-        satellite in the Earth inertial frame
+        satellite in the Earth inertial frame. It updates the values
+        stored in the instance as well as returns them.
 
         Parameters
         ----------
         step : int, optional
-            mean anomaly step between two points, in degrees, by default 30
+            true anomaly step between two points, in degrees, by default 30
+        start : int, optional
+            start true anomaly in degrees, by default 0.
+        stop : int, optional
+            stop true anomaly in degrees, by default 360.
 
         Returns
         -------
-        tuple[list[float], list[float]]
-            A list of latitudes and a list of longitudes.
+        tuple[np.array[float], np.array[float]]
+            An array of latitudes and an array of longitudes.
         """
         # compute t in function of nu
         self.nu_list = np.arange(start, stop, step)
@@ -164,6 +171,7 @@ class SatelliteTrace:
                 for i, t in enumerate(self.t_list)
             ]
         )
+        return self.latitude, self.longitude
 
     def _determine_correction_for_t(self, v_c, v):
         """Due to an arcsine function, we must apply corrections"""
@@ -230,6 +238,7 @@ class SatelliteTrace:
         )
 
     def _compute_longitude(self, nu: float, lat: float) -> float:
+        """Get the longitude in function of latitude and true anomaly"""
         # input everything in degrees
         correction, factor = self._determine_correction_for_lo(
             np.radians(self.AOP), np.radians(nu)
@@ -247,7 +256,7 @@ class SatelliteTrace:
         return self.longitude
 
 
-def plot(lat: list[float], lon: list[float]) -> None:
+def plot_trace(lat: list[float], lon: list[float]) -> None:
     # TODO: handle -180 < longitudes < 180
     # TODO: return figure object ?
     plt.plot(lon, lat, marker="o")
@@ -256,12 +265,21 @@ def plot(lat: list[float], lon: list[float]) -> None:
     plt.show()
 
 
-def multisat_plot(*args):
-    # TODO: plot multiple satellites on the same figure ?
-    pass
+def plot_traces(*args: SatelliteTrace):
+    if len(args) == 0:
+        raise ValueError(
+            "Please provide at least 1 instance of SatelliteTrace"
+        )
+    for sat_trace in args:
+        plt.plot(sat_trace.longitude, sat_trace.latitude, marker="o")
+    plt.xlabel("Longitudes")
+    plt.ylabel("Latitudes")
+    plt.show()
 
 
 if __name__ == "__main__":
-    sat = SatelliteTrace(40708, 0.8320, 61, 120, 270, step=10)
-    lat, lon = sat.get_latitude(), sat.get_longitude()
-    plot(lat, lon)
+    sat1 = SatelliteTrace(40708, 0.8320, 61, 120, 270)
+    sat2 = SatelliteTrace(20000, 0.120, 26, 80, 270)
+    lat, lon = sat1.get_latitude(), sat1.get_longitude()
+
+    plot_traces(sat1, sat2)
