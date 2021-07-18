@@ -28,12 +28,22 @@ class Satellite:
         self.radius_pe = self.sma * (1 - self.ecc)  # km
         self.altitude_ap = self.radius_ap + EARTH_RADIUS  # km
         self.altitude_pe = self.radius_pe + EARTH_RADIUS  # km
-        self.period = 2 * np.pi * np.sqrt(np.power(self.sma, 3) / EARTH_GRAV_CONST)  # seconds
+        self.period = (
+            2 * np.pi * np.sqrt(np.power(self.sma, 3) / EARTH_GRAV_CONST)
+        )  # seconds
         self.velocity_ap = np.sqrt(
-            2 * (-(EARTH_GRAV_CONST / (2 * self.sma)) + (EARTH_GRAV_CONST / self.radius_ap))
+            2
+            * (
+                -(EARTH_GRAV_CONST / (2 * self.sma))
+                + (EARTH_GRAV_CONST / self.radius_ap)
+            )
         )  # km/s
         self.velocity_pe = np.sqrt(
-            2 * (-(EARTH_GRAV_CONST / (2 * self.sma)) + (EARTH_GRAV_CONST / self.radius_pe))
+            2
+            * (
+                -(EARTH_GRAV_CONST / (2 * self.sma))
+                + (EARTH_GRAV_CONST / self.radius_pe)
+            )
         )  # km/s
 
     def _initialize(self):
@@ -45,19 +55,32 @@ class Satellite:
     def _main(self, step=30):
         # compute t in function of nu
         self.nu_list = np.arange(-60, 360, step)
-        self.t_list = np.array([self._compute_t(nu) - self.t_p for nu in self.nu_list])
+        self.t_list = np.array(
+            [self._compute_t(nu) - self.t_p for nu in self.nu_list]
+        )
         # compute the list of latitudes
         self.latitude = np.degrees(
-            np.arcsin(np.sin(np.radians(self.inc) * np.sin(np.radians(self.AOP + self.nu_list))))
+            np.arcsin(
+                np.sin(
+                    np.radians(self.inc)
+                    * np.sin(np.radians(self.AOP + self.nu_list))
+                )
+            )
         )
         # compute the list of raw longitudes
         self.raw_longitude = np.array(
-            [self._compute_longitude(nu, lat) for nu, lat in zip(self.nu_list, self.latitude)]
+            [
+                self._compute_longitude(nu, lat)
+                for nu, lat in zip(self.nu_list, self.latitude)
+            ]
         )
         # compute the true longitudes, with rotating Earth
         ALPHA = 360 / 86164
         self.true_longitude = np.array(
-            [self.LAN + self.raw_longitude[i] - ALPHA * t for i, t in enumerate(self.t_list)]
+            [
+                self.LAN + self.raw_longitude[i] - ALPHA * t
+                for i, t in enumerate(self.t_list)
+            ]
         )
 
     def _determine_correction_for_t(self, v_c, v):
@@ -127,7 +150,9 @@ class Satellite:
             np.radians(self.AOP), np.radians(nu)
         )
         return np.degrees(
-            correction + factor * np.arcsin(np.tan(np.radians(lat)) / np.tan(np.radians(self.inc)))
+            correction
+            + factor
+            * np.arcsin(np.tan(np.radians(lat)) / np.tan(np.radians(self.inc)))
         )
 
     def get_figure(self):
